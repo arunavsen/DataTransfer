@@ -20,7 +20,7 @@ namespace DataTransfer.Models.Sender
         {
             if (!optionsBuilder.IsConfigured)
             {
-                optionsBuilder.UseSqlServer("Server=192.168.0.131;User Id=sa; Password=$haonatkpl2013; Database=NestDB2021;");
+                optionsBuilder.UseSqlServer("Server=192.168.0.131;Database=RegBriefDB;User Id=sa; Password=$haonatkpl2013;TrustServerCertificate=True");
             }
         }
     }

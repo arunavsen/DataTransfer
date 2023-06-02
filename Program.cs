@@ -1,4 +1,5 @@
-﻿using DataTransfer.Models.Receiver;
+﻿using DataTransfer.Common;
+using DataTransfer.Models.Receiver;
 using DataTransfer.Models.Sender;
 using Microsoft.EntityFrameworkCore;
 
@@ -7,31 +8,116 @@ ReceiverDBContext receiverDBContext = new ReceiverDBContext();
 
 System.Net.ServicePointManager.ServerCertificateValidationCallback += (sender, certificate, chain, sslPolicyErrors) => true;
 
+
+// Retrieve data from RegBriefDB
+var briefs = senderDBContext.Brief
+    .Include(b => b.BriefCountryMaps)
+        .ThenInclude(bcm => bcm.TaxBriefContents)
+    .Include(b => b.BriefCountryMaps)
+        .ThenInclude(bcm => bcm.TpaBriefContents)
+    .Include(b => b.BriefCountryMaps)
+        .ThenInclude(bcm => bcm.WtaBriefContents)
+    .ToList().Where(x => x.Id == 7830);
+
+var countries = senderDBContext.Country.ToList();
+
+
+// Insert data into NestDB2021
+foreach (var brief in briefs)
+{
+    // Create Briefing record
+    var briefing = new Briefing
+    {
+        PublishDate = brief.PublishDate,
+        Year = brief.Year,
+        Month = brief.Month
+    };
+    foreach (var briefCountryMap in brief.BriefCountryMaps)
+    {
+        if (briefCountryMap.TpaBriefContents.Count() > 0)
+        {
+            briefing.BriefingType = RegBriefingType.TpaBriefing;
+            receiverDBContext.Briefings.Add(briefing);
+            receiverDBContext.SaveChanges();
+
+            foreach (var tpaBriefContent in briefCountryMap.TpaBriefContents)
+            {
+                var story = new Story
+                {
+                    Title = tpaBriefContent.Title,
+                    ShortStory = tpaBriefContent.Content,
+                    LongStory = "",
+                    RegFollowerLink = tpaBriefContent.RegFollowerLink,
+                };
+                receiverDBContext.Stories.Add(story);
+
+                var tpaStory = new TpaStory
+                {
+                    CountryCode = countries.FirstOrDefault(x => x.Name == briefCountryMap.CountryName).Code,
+                    StoryId = story.Id,
+                };
+                receiverDBContext.TpaStories.Add(tpaStory);
+                receiverDBContext.SaveChanges();
+            }
+        }
+        else if (briefCountryMap.WtaBriefContents.Count() > 0)
+        {
+            briefing.BriefingType = RegBriefingType.WtaBriefing;
+            receiverDBContext.Briefings.Add(briefing);
+            //receiverDBContext.SaveChanges();
+            foreach (var wtaBriefContent in briefCountryMap.WtaBriefContents)
+            {
+                var story = new Story
+                {
+                    Title = wtaBriefContent.Title,
+                    ShortStory = wtaBriefContent.Content,
+                    LongStory = "",
+                    RegFollowerLink = wtaBriefContent.RegFollowerLink,
+                };
+                receiverDBContext.Stories.Add(story);
+                //receiverDBContext.SaveChanges();
+
+                var wtoStory = new WtaStory
+                {
+                    CountryCode = !string.IsNullOrEmpty(briefCountryMap.CountryName) ?  countries.FirstOrDefault(x => x.Name == briefCountryMap.CountryName)?.Code : null,
+                    Story = story,
+                };
+                receiverDBContext.WtaStories.Add(wtoStory);
+                //receiverDBContext.SaveChanges();
+            }
+        }
+        else
+        {
+            briefing.BriefingType = RegBriefingType.TaxBriefing;
+            receiverDBContext.Briefings.Add(briefing);
+            foreach (var taxBriefContent in briefCountryMap.TaxBriefContents)
+            {
+                var story = new Story
+                {
+                    Title = taxBriefContent.CountryName,
+                    ShortStory = taxBriefContent.CountryName,
+                    LongStory = "",
+                    RegFollowerLink = "",
+                };
+                receiverDBContext.Stories.Add(story);
+                receiverDBContext.SaveChanges();
+
+                var taxStory = new TaxStory
+                {
+                    CountryCode = countries.FirstOrDefault(x => x.Name == briefCountryMap.CountryName).Code,
+                    StoryId = story.Id,
+                };
+                receiverDBContext.TaxStories.Add(taxStory);
+                receiverDBContext.SaveChanges();
+            }
+        }
+    }
+}
+
+// Save changes to NestDB2021
+receiverDBContext.SaveChanges();
+
 #region 1
-//// Retrieve data from RegBriefDB
-//var briefs = senderDBContext.Brief
-//    .Include(b => b.BriefCountryMaps)
-//        .ThenInclude(bcm => bcm.TaxBriefContents)
-//    .Include(b => b.BriefCountryMaps)
-//        .ThenInclude(bcm => bcm.TpaBriefContents)
-//    .Include(b => b.BriefCountryMaps)
-//        .ThenInclude(bcm => bcm.WtaBriefContents)
-//    .ToList();
-
-
-
-//// Insert data into NestDB2021
-//foreach (var brief in briefs)
-//{
-//    // Create Briefing record
-//    var briefing = new Briefing
-//    {
-//        PublishDate = brief.PublishDate,
-//        Year = brief.Year,
-//        Month = brief.Month
-//    };
-//    receiverDBContext.Briefings.Add(briefing);
-
 //    // Create Story records for each BriefCountryMap
 //    foreach (var briefCountryMap in brief.BriefCountryMaps)
 //    {
@@ -83,48 +169,3 @@ System.Net.ServicePointManager.ServerCertificateValidationCallback += (sender, c
 
 #endregion
 
-//using (var regBriefDbContext = new SenderDBContext(optionsRegBriefDB)) // Connect to RegBriefDB
-//{
-//    var briefs = regBriefDbContext.Briefs.AsEnumerable(); // Retrieve data from Briefs table
-//                                                          // Similarly retrieve data from other tables
-
-//    using (var nestDbContext = new NestDbContext(optionsNestDB2021)) // Connect to NestDB2021
-//    {
-//        foreach (var brief in briefs)
-//        {
-//            var briefing = new Briefing // Map the data to the corresponding class in NestDB2021
-//            {
-//                PublishDate = brief.PublishDate,
-//                Year = brief.Year,
-//                Month = brief.Month,
-//                BriefingType = null // set appropriate value for BriefingType
-//            };
-//            nestDbContext.Briefings.Add(briefing); // Add the data to NestDB2021
-//            foreach (var briefCountryMap in brief.BriefCountryMaps)
-//            {
-//                var story = new Story
-//                {
-//                    Briefing = briefing,
-//                    Title = null, // set appropriate value for Title
-//                    ShortStory = null, // set appropriate value for ShortStory
-//                    LongStory = null, // set appropriate value for LongStory
-//                    RegFollowerLink = null // set appropriate value for RegFollowerLink
-//                };
-//                nestDbContext.Stories.Add(story);
-//                foreach (var taxBriefContent in briefCountryMap.TaxBriefContents)
-//                {
-//                    var taxStory = new TaxStory
-//                    {
-//                        Story = story,
-//                        CountryCode = null // set appropriate value for CountryCode
-//                    };
-//                    nestDbContext.TaxStories.Add(taxStory);
-//                }
-//                // Similarly add data to others tables
-//            }
-//        }
-//        nestDbContext.SaveChanges(); // Save changes to NestDB2021 database
-//    }
-//}
-
-var tt = "";
